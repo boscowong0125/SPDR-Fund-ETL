@@ -1,27 +1,38 @@
 USE [PersonalFinance]
 GO
 
-/****** Object:  StoredProcedure [dbo].[Load_FundHoldings]    Script Date: 5/23/2024 7:39:31 PM ******/
+/****** Object:  StoredProcedure [dbo].[Load_FundHoldings]    Script Date: 9/4/2024 1:28:06 AM ******/
 SET ANSI_NULLS ON
 GO
 
 SET QUOTED_IDENTIFIER ON
 GO
 
+
+
+
+
 -- =============================================
--- Author:		Bosco Wong
+-- Author:			Bosco Wong
 -- Create date:		2024-05-23
 -- Description:		Create
 
--- exec dbo.Load_FundHoldings
+-- exec dbo.Load_FundHoldings '2024-08-30'
 -- =============================================
-CREATE PROCEDURE [dbo].[Load_FundHoldings]
+CREATE PROCEDURE [dbo].[Load_FundHoldings] (@ValDate DATE)
 
 AS
 BEGIN
 	-- drop temp table if exist
 IF OBJECT_ID('tempdb.dbo.#TempFundHoldings', 'U') IS NOT NULL
   DROP TABLE #TempFundHoldings; 
+
+DECLARE @FullPath NVARCHAR(1200)
+DECLARE @FilePath NVARCHAR(1000) = 'C:\Users\bosco\OneDrive\Data\SPDR_Daily_Data\Latest_Data\holdings-daily-us-en-spy_'
+DECLARE @FileExt NVARCHAR(10) = '.csv';
+
+SET @FullPath = @FilePath + CAST(@ValDate AS NVARCHAR(10))
+SET @FullPath = @FullPath + @FileExt;
 
 -- create temp table
 CREATE TABLE #TempFundHoldings (
@@ -33,32 +44,35 @@ CREATE TABLE #TempFundHoldings (
 	[Sector] [nvarchar](200) NULL,
 	[Shares] [nvarchar](15) NULL,
 	[LocalCurrency] [nvarchar](10) NULL
-) ON [PRIMARY]
+) ON [PRIMARY];
 
--- insert csv into temp table
-BULK INSERT #TempFundHoldings
-FROM 'C:\Users\bosco\OneDrive\Desktop\Projects\Data Projects\SPDR Fund Data\holdings-daily-us-en-spy.csv'
+
+DECLARE @InsertTempTableSQL NVARCHAR(MAX);
+SET @InsertTempTableSQL = 'BULK INSERT #TempFundHoldings FROM ''' + @FullPath + '''
 WITH
 (
-    FIRSTROW = 2,
-    FIELDTERMINATOR = ',',  --CSV field delimiter
-    ROWTERMINATOR = '\n',   --Use to shift the control to next row
+    FIRSTROW = 6,
+    FIELDTERMINATOR = ' + ''',''' + ', 
+    ROWTERMINATOR = ' + '''\n''' + ',   
     TABLOCK
-)
+)';
+
+EXEC (@InsertTempTableSQL)
 
 -- insert temp table into dbo.FundHoldings
 INSERT INTO dbo.FundHoldings
 SELECT 'SPDR S&P 500 ETF Trust'
 	 , 'SPY'
-	 , DATEADD(d, -1, CAST(GETDATE() AS DATE))
+	 , @ValDate
 	 , Name
 	 , Ticker
 	 , CUSIP
 	 , SEDOL
 	 , CAST(Weight AS DECIMAL(18,6))
-	 , Sector
+	 , CASE WHEN Sector = '-' THEN NULL ELSE Sector END
 	 , CAST(Shares AS DECIMAL(18,6))
 	 , LocalCurrency
+	 , GETDATE()
 FROM #TempFundHoldings
 
 END
